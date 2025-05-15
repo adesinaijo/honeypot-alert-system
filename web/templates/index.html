@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Honeypot Attack Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+    <style>
+        body { font-family: sans-serif; margin: 20px; background-color: #f4f4f4;}
+        h1 { text-align: center; color: #333; }
+        #attack-list { margin-top: 20px; border-top: 1px solid #ccc; padding-top: 10px; }
+        .attack-event {
+            background-color: #fff;
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.1); /* Added rgba for transparency */
+            opacity: 1; /* Initial opacity */
+            transition: opacity 0.5s ease-in-out; /* Smooth transition for new events */
+        }
+         .attack-event.new {
+             opacity: 0; /* Start invisible for new events */
+         }
+
+        .attack-event strong { color: #555; }
+         .attack-event .timestamp {
+            font-size: 0.8em;
+            color: #888;
+            float: right; /* Float timestamp to the right */
+         }
+    </style>
+</head>
+<body>
+    <h1>Honeypot Attack Dashboard</h1>
+
+    <div style="margin: 20px auto; width: 80%;">
+        <label for="serviceFilter">Filter by Service:</label>
+        <select id="serviceFilter">
+            <option value="All">All Services</option>
+            <option value="HTTPHoneypot">HTTP Honeypot</option>
+            <option value="SSHHoneypot">SSH Honeypot</option>
+            <option value="TelnetHoneypot">Telnet Honeypot</option> <option value="FTPHoneypot">FTP Honeypot</option> </select>
+
+        <label for="ipFilter" style="margin-left: 20px;">Filter by Source IP:</label>
+        <input type="text" id="ipFilter" placeholder="e.g., 192.168.1.1">
+
+        <label for="portFilter" style="margin-left: 20px;">Filter by Source Port:</label>
+        <input type="number" id="portFilter" placeholder="e.g., 51234" min="1">
+
+        <button id="applyFiltersButton" style="margin-left: 20px;">Apply Filters</button>
+    </div>
+    <div style="width: 600px; margin: auto;"> <canvas id="serviceAttackChart"></canvas>
+    </div>
+    <div style="width: 800px; margin: 20px auto;"> <canvas id="timeAttackChart"></canvas>
+    </div>
+    <div id="attackMap" style="height: 400px; width: 80%; margin: 20px auto; border: 1px solid #ccc;"></div>
+    <div id="attack-list">
+        <h2>Recent Attacks</h2>
+        <p>Loading attack data...</p>
+        </div>
+
+        <script>
+            // Variables for list, charts, and map
+            let lastEventId = null; // Variable for the list polling
+            let serviceChart = null; // Variable for the service chart instance
+            let timeChart = null; // Variable for the time chart instance
+            let attackMap = null; // Variable for the Leaflet map instance
+            let markers = L.featureGroup(); // Create a Leaflet feature group to hold markers
+    
+            // --- Get references to filter controls --- // <-- Update this section
+            const serviceFilterDropdown = document.getElementById('serviceFilter');
+            const ipFilterInput = document.getElementById('ipFilter'); // <-- Get IP input
+            const portFilterInput = document.getElementById('portFilter'); // <-- Get Port input
+            const applyFiltersButton = document.getElementById('applyFiltersButton'); // <-- Get button
+            // --- End get filter controls ---
+    
+    
+            // Function to fetch and display attack data in the list (used for polling)
+            function fetchAndDisplayAttacks() {
+                // --- Get the current selected filter values --- // <-- Update this section
+                const selectedService = serviceFilterDropdown.value;
+                const ipFilter = ipFilterInput.value.trim(); // <-- Get IP value, trim whitespace
+                const portFilter = portFilterInput.value.trim(); // <-- Get Port value, trim whitespace (it's a number, but starts as string)
+                console.log("Fetching recent attacks with filters:", selectedService, ipFilter, portFilter);
+    
+                // Construct the API URL. If lastEventId exists, we'll ask for events newer than that ID.
+                let apiUrl = lastEventId ? `/data/recent?since_id=${lastEventId}` : '/data/recent';
+                const urlParams = new URLSearchParams(); // Use URLSearchParams to build query string
+    
+                // --- Add filters to URLSearchParams --- // <-- Add this section
+                if (lastEventId) {
+                     urlParams.append('since_id', lastEventId);
+                }
+                if (selectedService && selectedService !== 'All') {
+                     urlParams.append('service', selectedService);
+                }
+                if (ipFilter) {
+                     urlParams.append('source_ip', ipFilter);
+                }
+                 // Only add port filter if a valid number is entered
+                if (portFilter && !isNaN(parseInt(portFilter))) {
+                     urlParams.append('source_port', portFilter);
+                }
+    
+                // Build the final API URL
+                const queryString = urlParams.toString();
+                if (queryString) {
+                     apiUrl = `/data/recent?${queryString}`;
+                } else {
+                     apiUrl = '/data/recent'; // No filters applied
+                }
+                // --- End Add filters to URLSearchParams ---
+    
+                 console.log("API URL for recent attacks:", apiUrl);
+    
+    
+                fetch(apiUrl)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        const attackListDiv = document.getElementById('attack-list');
+    
+                        // If this is the initial load and no data, display message
+                        // Note: Initial load with filters might result in 0 data
+                        if (!lastEventId && data.length === 0) {
+                             // If filters are applied and no data, indicate that
+                             if (selectedService !== 'All' || ipFilter || portFilter) {
+                                  attackListDiv.innerHTML = '<h2>Recent Attacks</h2><p>No attack data matching filters.</p>';
+                             } else {
+                                  // No filters and no data
+                                  attackListDiv.innerHTML = '<h2>Recent Attacks</h2><p>No attack data recorded yet.</p>';
+                             }
+                             return;
+                        }
+    
+                        // If this is the initial load and data exists, replace content
+                        // This handles the very first load when lastEventId is null
+                        if (!lastEventId && data.length > 0) {
+                             attackListDiv.innerHTML = '<h2>Recent Attacks</h2>'; // Clear loading message
+                             // Process initial data - add without the 'new' class
+                             data.forEach(event => {
+                                 const eventDiv = createEventDiv(event);
+                                 attackListDiv.appendChild(eventDiv); // Add directly for initial load
+                             });
+                             // Update lastEventId based on the initial load
+                             lastEventId = data[0]._id;
+                             console.log(`Initial list load complete. Set lastEventId to: ${lastEventId}`);
+                             return; // Exit the function after initial load
+                        }
+    
+                        // Handle subsequent polls (when lastEventId is not null)
+                        if (lastEventId && data.length === 0) {
+                            // No new events since last check matching filters
+                            console.log("No new events for list matching filters.");
+                            return;
+                        }
+    
+                        // Process new data (data.length > 0 and lastEventId is not null)
+                        // Data comes most recent first from the API when not using since_id,
+                        // but with since_id + sort ascending (which we implemented in backend),
+                        // data should be oldest new first. We reverse here so the *newest* ends up at the top of the visible list.
+                        data.reverse().forEach(event => {
+                            const eventDiv = createEventDiv(event);
+                            eventDiv.classList.add('new'); // Add 'new' class for transition
+    
+                            // Add new events at the top of the list (after the h2)
+                            attackListDiv.insertBefore(eventDiv, attackListDiv.children[1]);
+    
+                            // Trigger the fade-in effect after a small delay
+                            setTimeout(() => {
+                                eventDiv.classList.remove('new');
+                            }, 50); // Small delay to allow rendering
+                        });
+    
+                        // Update lastEventId to the ID of the most recent event fetched
+                        if (data.length > 0) {
+                             // When sorting ascending by _id and filtering by _id > lastEventId,
+                             // the last element in the received data array will have the highest _id
+                             lastEventId = data[data.length - 1]._id;
+                             console.log(`Processed ${data.length} new events for list. Updated lastEventId to: ${lastEventId}`);
+                        }
+    
+    
+                    })
+                    .catch(error => {
+                        console.error('Error fetching recent data for list:', error);
+                        const attackListDiv = document.getElementById('attack-list');
+                         // Only show error message on initial load failure or if list is empty
+                         if (!lastEventId || attackListDiv.children.length <= 1) {
+                            attackListDiv.innerHTML = '<h2>Recent Attacks</h2><p>Error loading attack data.</p>';
+                         }
+                    });
+            }
+    
+            // Helper function to create the HTML for an event div
+            function createEventDiv(event) {
+                 const eventDiv = document.createElement('div');
+                 eventDiv.classList.add('attack-event');
+    
+                 // Format the timestamp from the MongoDB _id
+                 // Using timestamp from event data if available, fallback to _id if needed
+                 const timestamp = event.timestamp ? new Date(event.timestamp).toLocaleString() :
+                                     (event._id ? new Date(parseInt(event._id.substring(0, 8), 16) * 1000).toLocaleString() : 'N/A');
+    
+    
+                 let content = `<span class="timestamp">${timestamp}</span>`; // Add timestamp
+                 content += `<strong>Service:</strong> ${event.service || 'N/A'}<br>`; // Use 'N/A' for missing fields
+                 content += `<strong>Source IP:</strong> ${event.source_ip || 'N/A'}<br>`;
+                 content += `<strong>Destination Port:</strong> ${event.destination_port || 'N/A'}<br>`;
+                 content += `<strong>Event Type:</strong> ${event.event_type || 'N/A'}<br>`;
+                 if (event.geolocation) {
+                     // Only display geo-location if it's not the private IP placeholder
+                     if (event.geolocation.country && event.geolocation.country !== "Private IP") {
+                         content += `<strong>Location:</strong> ${event.geolocation.city || 'N/A'}, ${event.geolocation.country || 'N/A'} (${event.geolocation.isp || 'N/A'})<br>`;
+                     } else if (event.geolocation.country === "Private IP") {
+                          content += `<strong>Location:</strong> Private IP<br>`; // Indicate private IP
+                     }
+                 }
+                 if (event.credentials && (event.credentials.username || event.credentials.password)) {
+                      content += `<strong>Credentials:</strong> Username: ${event.credentials.username || 'N/A'}, Password: ${event.credentials.password || 'N/A'} (Caution: Displaying credentials is risky)<br>`;
+                 }
+                  if (event.data) {
+                     // Display data, limit length if necessary
+                     const dataPreview = typeof event.data === 'string' ? event.data.substring(0, 200) + (event.data.length > 200 ? '...' : '') : 'N/A';
+                     content += `<strong>Data:</strong> ${dataPreview}<br>`;
+                 }
+                 // You can add more fields here as needed
+    
+                 eventDiv.innerHTML = content;
+                 return eventDiv;
+            }
+    
+            // Function to initialize the map
+            function initMap() {
+                // Only initialize the map once
+                if (attackMap === null) {
+                     // Initialize map centered roughly on the world with zoom 2
+                     attackMap = L.map('attackMap').setView([0, 0], 2);
+    
+                     // Add OpenStreetMap tiles as the base layer
+                     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                     }).addTo(attackMap);
+    
+                    console.log("Map initialized.");
+                 }
+            }
+    
+            // Function to add markers to the map
+            function addAttackMarkers(events) {
+                // Clear existing markers before adding new ones (important if map was updated later)
+                markers.clearLayers();
+    
+                events.forEach(event => {
+                     // Check if the event has geo-location data with valid latitude and longitude
+                     if (event.geolocation && typeof event.geolocation.latitude === 'number' && typeof event.geolocation.longitude === 'number') {
+                          try {
+                              const lat = event.geolocation.latitude;
+                              const lon = event.geolocation.longitude;
+    
+                              // Basic validation for coordinates
+                              if (lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180) {
+                                   const marker = L.marker([lat, lon]);
+    
+                                   // Create popup content
+                                   let popupContent = `<strong>Service:</strong> ${event.service || 'N/A'}<br>`;
+                                   popupContent += `<strong>Source IP:</strong> ${event.source_ip || 'N/A'}<br>`;
+                                   if (event.geolocation.city && event.geolocation.country) {
+                                        popupContent += `<strong>Location:</strong> ${event.geolocation.city}, ${event.geolocation.country}<br>`;
+                                   }
+                                    if (event.geolocation.isp) {
+                                         popupContent += `<strong>ISP:</strong> ${event.geolocation.isp}<br>`;
+                                     }
+                                    // Add timestamp to popup (optional)
+                                    if (event.timestamp) {
+                                         popupContent += `<strong>Timestamp:</strong> ${new Date(event.timestamp).toLocaleString()}<br>`;
+                                    }
+                                   // You can add more details to the popup
+    
+                                   marker.bindPopup(popupContent);
+                                   markers.addLayer(marker); // Add marker to the feature group
+                              } else {
+                                  console.warn("Invalid coordinates for event:", event);
+                              }
+                           } catch (e) {
+                                console.error("Error adding marker for event:", event, e);
+                           }
+                     }
+                });
+    
+                // Add the feature group to the map
+                markers.addTo(attackMap);
+    
+                 // Optional: Fit map bounds to the markers if there are any
+                 if (markers.getLayers().length > 0) {
+                    try {
+                         // This can sometimes zoom in too close for very close markers
+                         // You might prefer to set a specific zoom level or maxZoom
+                         attackMap.fitBounds(markers.getBounds(), { padding: [50, 50], maxZoom: 8 }); // Added padding and maxZoom
+                    } catch (e) {
+                         console.warn("Could not fit map bounds to markers, trying default view:", e);
+                         // Fallback to default view if fitting bounds fails (e.g., single point)
+                          attackMap.setView([0, 0], 2);
+                    }
+                 } else {
+                     // If no markers, reset to a default view
+                      attackMap.setView([0, 0], 2);
+                 }
+    
+                console.log(`Added ${markers.getLayers().length} markers to the map.`);
+            }
+    
+    
+            // Function to fetch data for the chart AND map, and render them
+            // This function is called once on initial page load AND when filter changes
+            function fetchAndRenderChartAndMap() {
+                 // --- Get the current selected filter values --- // <-- Update this section
+                 const selectedService = serviceFilterDropdown.value;
+                 const ipFilter = ipFilterInput.value.trim();
+                 const portFilter = portFilterInput.value.trim();
+                 console.log("Fetching all data for charts and map with filters:", selectedService, ipFilter, portFilter);
+    
+                 // Fetch ALL data for the chart and map (caution for large datasets)
+                 let apiUrl = '/data/all';
+                 const urlParams = new URLSearchParams(); // Use URLSearchParams to build query string
+    
+    
+                 // --- Add filters to URLSearchParams --- // <-- Add this section
+                 if (selectedService && selectedService !== 'All') {
+                     urlParams.append('service', selectedService);
+                 }
+                 if (ipFilter) {
+                     urlParams.append('source_ip', ipFilter);
+                 }
+                  // Only add port filter if a valid number is entered
+                 if (portFilter && !isNaN(parseInt(portFilter))) {
+                     urlParams.append('source_port', portFilter);
+                 }
+    
+                 // Build the final API URL
+                 const queryString = urlParams.toString();
+                 if (queryString) {
+                     apiUrl = `/data/all?${queryString}`;
+                 }
+                  // --- End Add filters to URLSearchParams ---
+    
+                 console.log("API URL for all data:", apiUrl);
+    
+                 fetch(apiUrl)
+                    .then(response => {
+                        if (!response.ok) {
+                             throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        console.log(`Workspaceed ${data.length} documents for chart and map.`);
+                        if (data.length === 0) {
+                             console.log("No data to render chart or map.");
+                             // Optionally clear existing chart/map elements
+                             if (serviceChart) serviceChart.destroy();
+                             if (timeChart) timeChart.destroy();
+                             if (attackMap) markers.clearLayers(); // Clear map markers
+                             // Display "No data" message for charts/map areas if needed
+                             return;
+                        }
+    
+                        // --- Render the Service Count Chart using Chart.js ---
+                        const serviceCounts = {};
+                        data.forEach(event => {
+                            const service = event.service || 'Unknown';
+                            serviceCounts[service] = (serviceCounts[service] || 0) + 1;
+                        });
+    
+                        const chartLabels = Object.keys(serviceCounts);
+                        const chartData = Object.values(serviceCounts);
+    
+                        const ctxService = document.getElementById('serviceAttackChart').getContext('2d');
+                        if (serviceChart) {
+                            serviceChart.destroy();
+                        }
+    
+                        serviceChart = new Chart(ctxService, {
+                            type: 'bar',
+                            data: { labels: chartLabels, datasets: [{ label: '# of Attacks', data: chartData, backgroundColor: ['rgba(255, 99, 132, 0.5)', 'rgba(54, 162, 235, 0.5)', 'rgba(255, 206, 86, 0.5)', 'rgba(75, 192, 192, 0.5)', 'rgba(153, 102, 255, 0.5)', 'rgba(255, 159, 64, 0.5)'], borderColor: ['rgba(255, 99, 132, 1)', 'rgba(54, 162, 235, 1)', 'rgba(255, 206, 86, 1)', 'rgba(75, 192, 192, 1)', 'rgba(153, 102, 255, 1)', 'rgba(255, 159, 64, 1)'], borderWidth: 1 }] },
+                            options: {
+                                scales: { y: { beginAtZero: true, title: { display: true, text: 'Number of Attacks' } }, x: { title: { display: true, text: 'Service' } } },
+                                responsive: true, maintainAspectRatio: false,
+                                plugins: { title: { display: true, text: 'Attack Count by Service' } }
+                            }
+                        });
+                        console.log("Service chart rendered.");
+    
+                        // --- Render the Attacks Over Time Chart using Chart.js ---
+                        const timeCounts = {};
+                        data.forEach(event => {
+                            if (event.timestamp) {
+                                try {
+                                    // Parse the ISO format timestamp
+                                    const date = new Date(event.timestamp);
+                                    const dateKey = date.toISOString().split('T')[0]; // Aggregate by day
+                                    timeCounts[dateKey] = (timeCounts[dateKey] || 0) + 1;
+    
+                                } catch (e) {
+                                     console.error("Error parsing timestamp for time chart:", event.timestamp, e);
+                                }
+                            } else if (event._id) {
+                                 // Fallback to _id timestamp if event.timestamp is missing
+                                 try {
+                                    const date = new Date(parseInt(event._id.substring(0, 8), 16) * 1000);
+                                    const dateKey = date.toISOString().split('T')[0];
+                                    timeCounts[dateKey] = (timeCounts[dateKey] || 0) + 1;
+                                 } catch (e) {
+                                      console.error("Error parsing _id timestamp for time chart:", event._id, e);
+                                 }
+                            }
+                        });
+    
+                        // Sort the time keys (dates) to display the chart chronologically
+                        const sortedTimeKeys = Object.keys(timeCounts).sort();
+                        const timeChartLabels = sortedTimeKeys;
+                        const timeChartData = sortedTimeKeys.map(key => timeCounts[key]);
+    
+                        const ctxTime = document.getElementById('timeAttackChart').getContext('2d');
+                        if (timeChart) {
+                            timeChart.destroy();
+                        }
+    
+                        timeChart = new Chart(ctxTime, {
+                            type: 'line',
+                            data: {
+                                labels: timeChartLabels,
+                                datasets: [{
+                                    label: '# of Attacks',
+                                    data: timeChartData,
+                                    backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                                    borderColor: 'rgba(54, 162, 235, 1)',
+                                    borderWidth: 1,
+                                    tension: 0.1
+                                }]
+                            },
+                            options: {
+                                scales: {
+                                    y: {
+                                        beginAtZero: true,
+                                         precision: 0,
+                                        title: { display: true, text: 'Number of Attacks' }
+                                    },
+                                    x: {
+                                        title: { display: true, text: 'Date' }
+                                    }
+                                },
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: {
+                                     title: { display: true, text: 'Attacks Over Time' }
+                                }
+                            }
+                        });
+                        console.log("Time chart rendered.");
+    
+    
+                        // --- Add markers to the map using the same data ---
+                        addAttackMarkers(data); // Call addAttackMarkers with the fetched data
+                        console.log("Map markers added.");
+                        // ----------------------------------------------
+    
+    
+                    })
+                    .catch(error => {
+                        console.error('Error fetching data for charts and map:', error);
+                        // Optionally display an error message on the page
+                    });
+            }
+    
+    
+            // Fetch data for the list and set up polling when the page loads
+            // Also initialize map and fetch data for chart/map
+            document.addEventListener('DOMContentLoaded', function() {
+                initMap(); // Initialize the map
+                // Initial fetch for the list and charts/map happens when Apply Filters button is clicked (or page load implicitly triggers it)
+                // fetchAndDisplayAttacks(); // Removed initial direct call
+                // fetchAndRenderChartAndMap(); // Removed initial direct call
+    
+    
+                // --- Add event listener to the Apply Filters button --- // <-- Add this
+                applyFiltersButton.addEventListener('click', function() {
+                     console.log("Apply Filters button clicked.");
+                     // When filters are applied, reset lastEventId and refetch all dashboard data
+                     lastEventId = null; // Reset lastEventId so the list does a full fetch
+    
+                     // Clear current list display before new data loads
+                     const attackListDiv = document.getElementById('attack-list');
+                     attackListDiv.innerHTML = '<h2>Recent Attacks</h2><p>Loading attack data...</p>';
+    
+                     // Clear charts and map before loading new data
+                     if (serviceChart) serviceChart.destroy();
+                     if (timeChart) timeChart.destroy();
+                     if (attackMap) markers.clearLayers(); // Clear map markers
+    
+                     fetchAndDisplayAttacks(); // Refetch list data with the new filters
+                     fetchAndRenderChartAndMap(); // Refetch chart and map data with the new filters
+                });
+                // --- End event listener ---
+    
+                // Trigger an initial fetch and render as if the button was clicked on page load
+                // This displays data when the page first loads without the user clicking
+                 applyFiltersButton.click();
+    
+    
+                // Set up polling for the list updates (only after initial load)
+                // The interval needs to account for the filter values.
+                // We will adjust the polling function to use the current filter values.
+                // The polling *will* continue with the last applied filters.
+                setInterval(fetchAndDisplayAttacks, 5000); // 5000 milliseconds = 5 seconds
+    
+    
+                // Optional: Set up polling for chart/map updates (more complex - depends on data size)
+                // setInterval(fetchAndRenderChartAndMap, 60000); // Example: Update charts/map every 60 seconds
+            });
+        </script>
+</body>
+</html>

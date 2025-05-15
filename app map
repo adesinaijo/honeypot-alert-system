@@ -1,0 +1,32 @@
+honeypot-alert-system/
+├── core/
+│   ├── __init__.py
+│   ├── honeypot_manager.py       # Orchestrates different honeypot services
+│   ├── alert_manager.py          # Handles sending alerts (email, webhooks)
+│   └── geolocation.py            # Handles IP geo-location lookups
+├── services/
+│   ├── __init__.py
+│   ├── base_honeypot.py          # Base class for honeypot services
+│   ├── ssh_honeypot.py           # Emulates SSH service (using Paramiko)
+│   ├── http_honeypot.py          # Emulates HTTP service (using socket or a microframework)
+│   ├── rdp_honeypot.py           # Emulates RDP service (more complex, might be basic emulation)
+│   └── ...                       # Other potential service emulations
+├── data/
+│   ├── __init__.py
+│   ├── database.py               # Handles interaction with MongoDB
+│   └── models.py                 # Data models for logging (e.g., AttackEvent)
+├── web/
+│   ├── static/                   # CSS, JS, images for the dashboard
+│   │   ├── css/
+│   │   └── js/
+│   ├── templates/                # HTML templates for the dashboard
+│   │   └── index.html
+│   ├── app.py                    # Flask application for the dashboard API and serving files
+│   └── dashboard.py              # Logic for dashboard data retrieval and processing
+├── config/
+│   └── settings.py               # Configuration file (ports, alert recipients, API keys)
+├── logs/
+│   └── honeypot.log              # System logs for the honeypot application
+├── scripts/
+│   └── run_honeypot.py           # Script to start the honeypot manager
+└── requirements.txt              # Python dependencies

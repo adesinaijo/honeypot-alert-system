@@ -1,0 +1,32 @@
+# Ignore Python bytecode files
+*.pyc
+__pycache__/
+
+# Ignore virtual environment directories
+# Add any names you use for virtual environments
+venv/
+.venv/
+env/
+.env/
+
+# Ignore logs directory and files
+logs/
+*.log
+
+# --- CRITICAL: Ignore your settings file! ---
+# This contains sensitive information like database URI, passwords, API keys.
+# DO NOT commit this file to public or shared repositories.
+config/settings.py
+# If you created a separate local_settings.py or similar for testing:
+# config/local_settings.py
+
+# Ignore editor specific files (optional, but good practice)
+.vscode/
+.idea/
+
+# Ignore any data files if you store them locally outside the DB
+# data/*.json
+# data/*.csv
+
+# Ignore any sample config files that might be copied
+# config/settings.py.sample
