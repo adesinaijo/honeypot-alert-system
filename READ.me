@@ -1,0 +1,144 @@
+# Simple Honeypot Alert System with Visualization Dashboard
+
+## Project Description
+
+This project is a simple, self-hosted honeypot system designed to detect basic network attacks (such as connection attempts, scanning, and login attempts) on various services. It logs these events to a MongoDB database (specifically designed for MongoDB Atlas), sends alerts via email and webhooks, and provides a web-based dashboard for real-time visualization and analysis of the attack data.
+
+The goal is to provide an easy-to-deploy solution for gaining visibility into basic malicious network activity targeting your network perimeter.
+
+## Features
+
+* **Multiple Honeypots:** Emulates common services like HTTP, SSH, Telnet, and FTP.
+* **Centralized Logging:** Logs all detected attack events to a MongoDB Atlas database.
+* **Geo-location:** Attempts to determine and log the geographical location and ISP of attackers based on their source IP address (uses ipinfo.io by default).
+* **Flexible Alerting:** Sends alerts via email and/or webhooks for detected events (configurable).
+* **Real-time Dashboard:** A web interface built with Flask and JavaScript/HTML for visualizing attacks as they happen.
+* **Attack List:** Displays a scrolling list of recent attack events.
+* **Visualization Charts:** Includes a bar chart for attack counts by service and a line chart for attacks over time.
+* **World Map:** Visualizes attacker locations on a world map using Leaflet.js.
+* **Data Filtering:** Dashboard data can be filtered by Service Type, Source IP Address, Source Port, and Date Range.
+* **Basic Authentication:** Protects the dashboard with HTTP Basic Authentication.
+* **Configuration via Environment Variables:** Sensitive settings and configuration options are managed using environment variables, making the project easier to deploy and more secure.
+* **Dependency Management:** Uses `requirements.txt` for easy installation of Python dependencies.
+
+## Prerequisites
+
+Before you begin, ensure you have the following:
+
+* **Python 3.7+:** Installed on your system.
+* **MongoDB Atlas Account:** A free tier cluster is sufficient for getting started. You will need the connection URI and database name.
+* **SMTP Server Credentials (Optional for Email Alerts):** If you want to use email alerts, you'll need credentials for an SMTP server (e.g., Gmail, SendGrid). If using Gmail with 2-factor authentication, you'll need to generate an App Password.
+* **Webhook URL (Optional for Webhook Alerts):** If you want to use webhook alerts, you'll need a webhook URL (e.g., for Discord, Slack, a custom service).
+* **ipinfo.io API Key (Optional for Geo-location beyond free tier limits):** The geo-location uses ipinfo.io. The free tier has limitations. If you hit those or need more reliable results, you might need a paid plan and an API key.
+* **Git:** Installed on your system for cloning the repository.
+
+## Setup
+
+1.  **Clone the repository:**
+    ```bash
+    git clone [Your GitHub Repository URL]
+    cd honeypot-alert-system
+    ```
+    *(Replace `[Your GitHub Repository URL]` with the actual URL from your GitHub repo).*
+
+2.  **Set up a Python Virtual Environment (Recommended):**
+    ```bash
+    python -m venv venv
+    ```
+
+3.  **Activate the virtual environment:**
+    * On Linux/macOS:
+        ```bash
+        source venv/bin/activate
+        ```
+    * On Windows:
+        ```bash
+        .\venv\Scripts\activate
+        ```
+
+4.  **Install Dependencies:**
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+## Configuration
+
+Configuration is managed primarily through **Environment Variables**. **DO NOT modify the `config/settings.py` file directly** to set sensitive credentials or production-specific settings.
+
+You need to set the required environment variables in your terminal **before** running the `run_honeypot.py` script.
+
+Here are the key environment variables you can set:
+
+* `MONGO_URI`: Your MongoDB Atlas connection string (e.g., `mongodb+srv://<username>:<password>@<cluster-url>/<db-name>?retryWrites=true&w=majority`). **REQUIRED if `DATABASE_ENABLED` is True.**
+* `MONGO_DB_NAME`: The name of your MongoDB database (default: `honeypot_db`).
+* `DATABASE_ENABLED`: Set to `True` or `False` to enable/disable database logging (default: `True`).
+* `HONEYPOT_PORTS`: A comma-separated string of ports the honeypot should listen on (e.g., `80,22,23,21,25,110`). Defaults to `80,22,23,21`.
+* `WEB_PORT`: The port the Flask web server will run on (default: `5000`).
+* `FLASK_DEBUG`: Set to `True` or `False` for Flask debug mode (default: `False` - recommended for production).
+* `DASHBOARD_USERNAME`: Username for dashboard authentication (default: `admin` - **CHANGE THIS IN PRODUCTION**).
+* `DASHBOARD_PASSWORD`: Password for dashboard authentication (default: `password123` - **CHANGE THIS IN PRODUCTION**).
+* `ALERTING_ENABLED`: Set to `True` or `False` to enable/disable all alerting (default: `True`).
+* `EMAIL_ALERTS_ENABLED`: Set to `True` or `False` to enable/disable email alerts (default: `False`).
+* `EMAIL_ADDRESS`: The sender email address for alerts. **REQUIRED if `EMAIL_ALERTS_ENABLED` is True.**
+* `EMAIL_PASSWORD`: The password (or App Password) for the sender email account. **REQUIRED if `EMAIL_ALERTS_ENABLED` is True.**
+* `EMAIL_SMTP_SERVER`: The SMTP server address (default: `smtp.gmail.com`).
+* `EMAIL_SMTP_PORT`: The SMTP server port (default: `587`).
+* `EMAIL_RECIPIENTS`: A comma-separated string of recipient email addresses. **REQUIRED if `EMAIL_ALERTS_ENABLED` is True.**
+* `WEBHOOK_ALERTS_ENABLED`: Set to `True` or `False` to enable/disable webhook alerts (default: `False`).
+* `WEBHOOK_URL`: The URL for sending webhook alerts. **REQUIRED if `WEBHOOK_ALERTS_ENABLED` is True.**
+* `GEOLOCATION_API_KEY`: Your ipinfo.io (or other service) API key if needed.
+* `GEOLOCATION_API_URL`: The URL for the geo-location API endpoint (default: `https://ipinfo.io/{}/json`).
+* `DASHBOARD_POLLING_INTERVAL_MS`: Interval in milliseconds for the dashboard to poll for new events (default: `5000`).
+
+**How to set environment variables:**
+
+* **On Linux/macOS (for the current session):**
+    ```bash
+    export MONGO_URI="your_actual_mongo_uri"
+    export DASHBOARD_PASSWORD="your_secure_password"
+    export EMAIL_ALERTS_ENABLED="True"
+    export EMAIL_ADDRESS="your_email@example.com"
+    # ... etc ...
+    ```
+* **On Windows (for the current session):**
+    ```cmd
+    set MONGO_URI="your_actual_mongo_uri"
+    set DASHBOARD_PASSWORD="your_secure_password"
+    set EMAIL_ALERTS_ENABLED="True"
+    set EMAIL_ADDRESS="your_email@example.com"
+    # ... etc ...
+    ```
+* **For persistent environment variables:** Consult your operating system documentation (e.g., `.bashrc`, `.zshrc`, system settings).
+
+## Running the Application
+
+Once dependencies are installed and environment variables are set, you can start the honeypot system:
+
+```bash
+python run_honeypot.py
+
+
+The terminal will show messages indicating which honeypots are starting and the web server port.
+Accessing the Dashboard
+
+Open a web browser and navigate to the IP address of the machine running the honeypot, followed by the web port (default 5000).
+
+http://<your_server_ip>:<WEB_PORT>
+
+You will be prompted for a username and password (default: admin/password123 - CHANGE THESE VIA ENVIRONMENT VARIABLES!).
+Usage
+
+    The dashboard provides a visual overview of detected attacks.
+    The Recent Attacks list updates automatically as new events occur.
+    Use the filter controls at the top to narrow down the data displayed in the list, charts, and map by Service, Source IP, Source Port, and Date Range. Click "Apply Filters" after changing values.
+    Attack details, including captured credentials (handle with care!) and geo-location, are shown in the attack list entries and map popups.
+
+Testing
+
+    Use tools like nmap or nc from another machine to test the honeypots on the configured ports (e.g., nc <your_server_ip> 80, ssh root@<your_server_ip> -p 22, telnet <your_server_ip> 23, ftp <your_server_ip> 21).
+    Check the terminal running run_honeypot.py for logging output.
+    Check your MongoDB Atlas database for new attacks documents.
+    Check your configured email inbox or webhook destination for alerts.
+    Refresh the dashboard or click "Apply Filters" to see the new events appear in the list, charts, and map.
+
+

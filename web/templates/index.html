@@ -43,7 +43,9 @@
             <option value="All">All Services</option>
             <option value="HTTPHoneypot">HTTP Honeypot</option>
             <option value="SSHHoneypot">SSH Honeypot</option>
-            <option value="TelnetHoneypot">Telnet Honeypot</option> <option value="FTPHoneypot">FTP Honeypot</option> </select>
+            <option value="TelnetHoneypot">Telnet Honeypot</option>
+            <option value="FTPHoneypot">FTP Honeypot</option>
+            </select>
 
         <label for="ipFilter" style="margin-left: 20px;">Filter by Source IP:</label>
         <input type="text" id="ipFilter" placeholder="e.g., 192.168.1.1">
@@ -51,6 +53,11 @@
         <label for="portFilter" style="margin-left: 20px;">Filter by Source Port:</label>
         <input type="number" id="portFilter" placeholder="e.g., 51234" min="1">
 
+        <label for="startDateFilter" style="margin-left: 20px;">Start Date:</label>
+        <input type="date" id="startDateFilter">
+
+        <label for="endDateFilter" style="margin-left: 20px;">End Date:</label>
+        <input type="date" id="endDateFilter">
         <button id="applyFiltersButton" style="margin-left: 20px;">Apply Filters</button>
     </div>
     <div style="width: 600px; margin: auto;"> <canvas id="serviceAttackChart"></canvas>
@@ -73,9 +80,11 @@
     
             // --- Get references to filter controls --- // <-- Update this section
             const serviceFilterDropdown = document.getElementById('serviceFilter');
-            const ipFilterInput = document.getElementById('ipFilter'); // <-- Get IP input
-            const portFilterInput = document.getElementById('portFilter'); // <-- Get Port input
-            const applyFiltersButton = document.getElementById('applyFiltersButton'); // <-- Get button
+            const ipFilterInput = document.getElementById('ipFilter');
+            const portFilterInput = document.getElementById('portFilter');
+            const startDateFilterInput = document.getElementById('startDateFilter'); // <-- Get Start Date input
+            const endDateFilterInput = document.getElementById('endDateFilter'); // <-- Get End Date input
+            const applyFiltersButton = document.getElementById('applyFiltersButton');
             // --- End get filter controls ---
     
     
@@ -83,15 +92,17 @@
             function fetchAndDisplayAttacks() {
                 // --- Get the current selected filter values --- // <-- Update this section
                 const selectedService = serviceFilterDropdown.value;
-                const ipFilter = ipFilterInput.value.trim(); // <-- Get IP value, trim whitespace
-                const portFilter = portFilterInput.value.trim(); // <-- Get Port value, trim whitespace (it's a number, but starts as string)
-                console.log("Fetching recent attacks with filters:", selectedService, ipFilter, portFilter);
+                const ipFilter = ipFilterInput.value.trim();
+                const portFilter = portFilterInput.value.trim();
+                const startDateFilter = startDateFilterInput.value; // <-- Get Start Date value (YYYY-MM-DD)
+                const endDateFilter = endDateFilterInput.value; // <-- Get End Date value (YYYY-MM-DD)
+                console.log("Fetching recent attacks with filters:", selectedService, ipFilter, portFilter, startDateFilter, endDateFilter);
     
                 // Construct the API URL. If lastEventId exists, we'll ask for events newer than that ID.
                 let apiUrl = lastEventId ? `/data/recent?since_id=${lastEventId}` : '/data/recent';
                 const urlParams = new URLSearchParams(); // Use URLSearchParams to build query string
     
-                // --- Add filters to URLSearchParams --- // <-- Add this section
+                // --- Add filters to URLSearchParams --- // <-- Update this section
                 if (lastEventId) {
                      urlParams.append('since_id', lastEventId);
                 }
@@ -105,6 +116,14 @@
                 if (portFilter && !isNaN(parseInt(portFilter))) {
                      urlParams.append('source_port', portFilter);
                 }
+                // --- Add Date Filters to URLSearchParams --- // <-- Add this section
+                if (startDateFilter) {
+                     urlParams.append('start_date', startDateFilter);
+                }
+                if (endDateFilter) {
+                     urlParams.append('end_date', endDateFilter);
+                }
+                // --- End Add Date Filters ---
     
                 // Build the final API URL
                 const queryString = urlParams.toString();
@@ -132,7 +151,7 @@
                         // Note: Initial load with filters might result in 0 data
                         if (!lastEventId && data.length === 0) {
                              // If filters are applied and no data, indicate that
-                             if (selectedService !== 'All' || ipFilter || portFilter) {
+                             if (selectedService !== 'All' || ipFilter || portFilter || startDateFilter || endDateFilter) { // <-- Update this check
                                   attackListDiv.innerHTML = '<h2>Recent Attacks</h2><p>No attack data matching filters.</p>';
                              } else {
                                   // No filters and no data
@@ -151,6 +170,12 @@
                                  attackListDiv.appendChild(eventDiv); // Add directly for initial load
                              });
                              // Update lastEventId based on the initial load
+                             // Note: If date filters are applied, the "most recent" might not be what you want for polling.
+                             // Polling with date filters + since_id might require careful thought,
+                             // but for simplicity now, we'll just update lastEventId based on received data.
+                             // If date filters make the result set small, polling might miss events outside the date range.
+                             // For robust filtering + polling, you might need a different strategy or limit filtering to /data/all.
+                             // However, let's proceed with filtering recent for now.
                              lastEventId = data[0]._id;
                              console.log(`Initial list load complete. Set lastEventId to: ${lastEventId}`);
                              return; // Exit the function after initial load
@@ -326,14 +351,16 @@
                  const selectedService = serviceFilterDropdown.value;
                  const ipFilter = ipFilterInput.value.trim();
                  const portFilter = portFilterInput.value.trim();
-                 console.log("Fetching all data for charts and map with filters:", selectedService, ipFilter, portFilter);
+                 const startDateFilter = startDateFilterInput.value; // <-- Get Start Date value
+                 const endDateFilter = endDateFilterInput.value; // <-- Get End Date value
+                 console.log("Fetching all data for charts and map with filters:", selectedService, ipFilter, portFilter, startDateFilter, endDateFilter);
     
                  // Fetch ALL data for the chart and map (caution for large datasets)
                  let apiUrl = '/data/all';
                  const urlParams = new URLSearchParams(); // Use URLSearchParams to build query string
     
     
-                 // --- Add filters to URLSearchParams --- // <-- Add this section
+                 // --- Add filters to URLSearchParams --- // <-- Update this section
                  if (selectedService && selectedService !== 'All') {
                      urlParams.append('service', selectedService);
                  }
@@ -344,6 +371,14 @@
                  if (portFilter && !isNaN(parseInt(portFilter))) {
                      urlParams.append('source_port', portFilter);
                  }
+                 // --- Add Date Filters to URLSearchParams --- // <-- Add this section
+                 if (startDateFilter) {
+                     urlParams.append('start_date', startDateFilter);
+                 }
+                 if (endDateFilter) {
+                     urlParams.append('end_date', endDateFilter);
+                 }
+                 // --- End Add Date Filters ---
     
                  // Build the final API URL
                  const queryString = urlParams.toString();
@@ -369,7 +404,16 @@
                              if (serviceChart) serviceChart.destroy();
                              if (timeChart) timeChart.destroy();
                              if (attackMap) markers.clearLayers(); // Clear map markers
-                             // Display "No data" message for charts/map areas if needed
+                              // Display "No data" message for charts/map areas if needed
+                             // You might want to clear the previous data display here too
+                             const serviceChartCanvas = document.getElementById('serviceAttackChart');
+                             const timeChartCanvas = document.getElementById('timeAttackChart');
+                             const attackMapDiv = document.getElementById('attackMap');
+    
+                             // Clear previous chart/map content if necessary
+                             // Re-add placeholder text or images if desired when no data
+                             // For now, destroying charts and clearing markers is sufficient
+    
                              return;
                         }
     
@@ -491,7 +535,7 @@
                 // fetchAndRenderChartAndMap(); // Removed initial direct call
     
     
-                // --- Add event listener to the Apply Filters button --- // <-- Add this
+                // --- Add event listener to the Apply Filters button ---
                 applyFiltersButton.addEventListener('click', function() {
                      console.log("Apply Filters button clicked.");
                      // When filters are applied, reset lastEventId and refetch all dashboard data
@@ -505,6 +549,7 @@
                      if (serviceChart) serviceChart.destroy();
                      if (timeChart) timeChart.destroy();
                      if (attackMap) markers.clearLayers(); // Clear map markers
+    
     
                      fetchAndDisplayAttacks(); // Refetch list data with the new filters
                      fetchAndRenderChartAndMap(); // Refetch chart and map data with the new filters
