@@ -16,8 +16,8 @@ from services.base_honeypot import BaseHoneypot
 from services.http_honeypot import HTTPHoneypot
 from services.ssh_honeypot import SSHHoneypot
 from services.telnet_honeypot import TelnetHoneypot
-from services.ftp_honeypot import FTPHoneypot # <-- Import FTP honeypot
-from web.app import app
+from services.ftp_honeypot import FTPHoneypot
+# from web.app import app # <-- No longer needed if web server runs separately
 from data.database import init_logging
 
 
@@ -30,24 +30,28 @@ init_logging()
 honeypot_threads = []
 
 # --- Function to run the Flask web server ---
-def run_flask_app():
-    """Runs the Flask application."""
-    logging.info(f"Starting Flask web server on port {settings.WEB_PORT}...")
-    print(f"[*] Starting Flask web server on port {settings.WEB_PORT}...")
-    try:
-        app.run(host='0.0.0.0', port=settings.WEB_PORT, debug=settings.FLASK_DEBUG)
-    except Exception as e:
-        logging.error(f"Failed to start Flask web server: {e}", exc_info=True)
-        print(f"[!] Failed to start Flask web server: {e}")
+# We will remove this function as Flask will be run by Gunicorn separately
+# def run_flask_app():
+#     """Runs the Flask application."""
+#     logging.info(f"Starting Flask web server on port {settings.WEB_PORT}...")
+#     print(f"[*] Starting Flask web server on port {settings.WEB_PORT}...")
+#     try:
+#         # This is the Flask development server, NOT for production
+#         app.run(host='0.0.0.0', port=settings.WEB_PORT, debug=settings.FLASK_DEBUG)
+#     except Exception as e:
+#         logging.error(f"Failed to start Flask web server: {e}", exc_info=True)
+#         print(f"[!] Failed to start Flask web server: {e}")
 
 
 # --- Main execution block ---
 if __name__ == "__main__":
-    print("[*] Starting Honeypot Alert System...")
+    print("[*] Starting Honeypot Alert System (Honeypot services only).")
 
     listen_host = "0.0.0.0"
 
-    print(f"[*] Listening on {listen_host} for ports: {settings.HONEYPOT_PORTS} and web on port {settings.WEB_PORT}")
+    print(f"[*] Honeypot services listening on {listen_host} for ports: {settings.HONEYPOT_PORTS}")
+    # print(f"[*] Web server will run separately on port {settings.WEB_PORT}") # <-- Update message
+
 
     for port in settings.HONEYPOT_PORTS:
         honeypot_instance = None
@@ -60,7 +64,7 @@ if __name__ == "__main__":
         elif port == 23:
              honeypot_instance = TelnetHoneypot(listen_host, port)
              print(f"[*] TelnetHoneypot listening on {listen_host}:{port}")
-        elif port == 21: # <-- Add FTP port check
+        elif port == 21:
              honeypot_instance = FTPHoneypot(listen_host, port)
              print(f"[*] FTPHoneypot listening on {listen_host}:{port}")
         # Add more elif blocks here for other honeypot types based on port
@@ -75,18 +79,23 @@ if __name__ == "__main__":
             logging.warning(f"No specific honeypot implementation for port {port}. Skipping.")
 
 
-    flask_thread = threading.Thread(target=run_flask_app)
-    flask_thread.daemon = True
-    flask_thread.start()
+    # --- Create and start the Flask web server thread ---
+    # REMOVED: Flask server will be run by Gunicorn in a separate process
+    # flask_thread = threading.Thread(target=run_flask_app)
+    # flask_thread.daemon = True
+    # flask_thread.start()
+    # --- End Flask web server thread ---
 
-    print("[*] Honeypot services and web server started.")
-    print(f"[*] Listening on {listen_host} for ports: {settings.HONEYPOT_PORTS} and web on port {settings.WEB_PORT}")
-    print("[*] Press Ctrl+C to stop.")
+    print("[*] Honeypot services started.")
+    print(f"[*] Honeypots listening on {listen_host} for ports: {settings.HONEYPOT_PORTS}")
+    print(f"[*] To start the web dashboard, run Gunicorn: gunicorn -w 4 --bind 0.0.0.0:{settings.WEB_PORT} web.run_web:app") # <-- Updated instructions
+    print("[*] Press Ctrl+C to stop honeypot services.")
+
 
     try:
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
-        print("\n[*] Shutting down Honeypot Alert System.")
-        logging.info("Honeypot Alert System shutting down.")
+        print("\n[*] Shutting down Honeypot Alert System (Honeypot services).")
+        logging.info("Honeypot Alert System (services) shutting down.")
         sys.exit(0)
