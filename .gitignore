@@ -29,4 +29,5 @@ config/settings.py
 # data/*.csv
 
 # Ignore any sample config files that might be copied
-# config/settings.py.sample
+# config/settings.py.samplehost_key.rsa
+host_key.rsa.pub
